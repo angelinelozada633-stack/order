@@ -611,29 +611,24 @@ app.get('/api/orders/all', verifyToken, async (req, res) => {
         }
         
         const { status } = req.query;
-        
         let query = {};
-        if (status) {
-            query.status = status;
-        }
+        if (status) query.status = status;
         
-        const orders = await Order.find(query)
-            .populate('userId', 'email firstName lastName')
-            .sort({ createdAt: -1 });
+        // Don't use populate - users are in different DB
+        const orders = await Order.find(query).sort({ createdAt: -1 });
         
         res.json({
             success: true,
             data: orders
         });
     } catch (error) {
-        console.error('Error fetching orders:', error);
+        console.error('Orders error:', error);
         res.status(500).json({
             success: false,
             message: error.message
         });
     }
 });
-
 // Get user's orders - FIXED
 app.get('/api/orders', verifyToken, async (req, res) => {
     try {
@@ -1035,4 +1030,5 @@ app.listen(PORT, () => {
     console.log('✓ http://localhost:' + PORT);
 
 });
+
 
