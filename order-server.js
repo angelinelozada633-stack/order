@@ -8,8 +8,8 @@ app.use(cors());
 app.use(express.json());
 
 // MongoDB Connection
-const DB_URL = 'mongodb+srv://raven:12345@test.q3j1urd.mongodb.net/Orders';
-const JWT_SECRET = 'your-secret-key-change-in-production';
+const DB_URL = 'mongodb+srv://angelinelozada633:integrativeprogramming@cluster0.g7zam5f.mongodb.net/';
+const JWT_SECRET = '12345';
 
 mongoose.connect(DB_URL)
     .then(() => console.log('✓ Order Server Connected to Database'))
@@ -1019,4 +1019,5 @@ const PORT = 3003;
 app.listen(PORT, () => {
     console.log('✓ Order & Payment Server is running!');
     console.log('✓ http://localhost:' + PORT);
+
 });
