@@ -600,8 +600,8 @@ app.put('/api/orders/:id/cancel', verifyToken, async (req, res) => {
     }
 });
 
-// Get all orders (admin only)
-app.get('/api/admin/orders', verifyToken, async (req, res) => {
+// Get all orders (admin only) - FIXED
+app.get('/api/orders/all', verifyToken, async (req, res) => {
     try {
         if (req.userRole !== 'admin') {
             return res.status(403).json({
@@ -610,13 +610,23 @@ app.get('/api/admin/orders', verifyToken, async (req, res) => {
             });
         }
         
-        const orders = await Order.find().sort({ createdAt: -1 });
+        const { status } = req.query;
+        
+        let query = {};
+        if (status) {
+            query.status = status;
+        }
+        
+        const orders = await Order.find(query)
+            .populate('userId', 'email firstName lastName')
+            .sort({ createdAt: -1 });
         
         res.json({
             success: true,
             data: orders
         });
     } catch (error) {
+        console.error('Error fetching orders:', error);
         res.status(500).json({
             success: false,
             message: error.message
@@ -624,8 +634,33 @@ app.get('/api/admin/orders', verifyToken, async (req, res) => {
     }
 });
 
-// Get order statistics (admin only)
-app.get('/api/admin/orders/stats', verifyToken, async (req, res) => {
+// Get user's orders - FIXED
+app.get('/api/orders', verifyToken, async (req, res) => {
+    try {
+        const { status } = req.query;
+        
+        let query = { userId: req.userId };
+        if (status) {
+            query.status = status;
+        }
+        
+        const orders = await Order.find(query).sort({ createdAt: -1 });
+        
+        res.json({
+            success: true,
+            data: orders
+        });
+    } catch (error) {
+        console.error('Error fetching user orders:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+// Alternative: If populate fails, use this simpler version
+app.get('/api/orders/all-simple', verifyToken, async (req, res) => {
     try {
         if (req.userRole !== 'admin') {
             return res.status(403).json({
@@ -634,42 +669,21 @@ app.get('/api/admin/orders/stats', verifyToken, async (req, res) => {
             });
         }
         
-        const totalOrders = await Order.countDocuments();
-        const pendingOrders = await Order.countDocuments({ status: 'pending' });
-        const processingOrders = await Order.countDocuments({ status: 'processing' });
-        const shippedOrders = await Order.countDocuments({ status: 'shipped' });
-        const deliveredOrders = await Order.countDocuments({ status: 'delivered' });
-        const cancelledOrders = await Order.countDocuments({ status: 'cancelled' });
+        const { status } = req.query;
         
-        const revenueResult = await Order.aggregate([
-            { $match: { paymentStatus: 'paid' } },
-            { $group: { _id: null, total: { $sum: '$totalAmount' } } }
-        ]);
+        let query = {};
+        if (status) {
+            query.status = status;
+        }
         
-        const totalRevenue = revenueResult.length > 0 ? revenueResult[0].total : 0;
-        
-        const averageOrderResult = await Order.aggregate([
-            { $group: { _id: null, average: { $avg: '$totalAmount' } } }
-        ]);
-        
-        const averageOrderValue = averageOrderResult.length > 0 ? averageOrderResult[0].average : 0;
+        const orders = await Order.find(query).sort({ createdAt: -1 });
         
         res.json({
             success: true,
-            data: {
-                totalOrders,
-                ordersByStatus: {
-                    pending: pendingOrders,
-                    processing: processingOrders,
-                    shipped: shippedOrders,
-                    delivered: deliveredOrders,
-                    cancelled: cancelledOrders
-                },
-                totalRevenue,
-                averageOrderValue
-            }
+            data: orders
         });
     } catch (error) {
+        console.error('Error fetching orders:', error);
         res.status(500).json({
             success: false,
             message: error.message
@@ -1021,3 +1035,4 @@ app.listen(PORT, () => {
     console.log('✓ http://localhost:' + PORT);
 
 });
+
