@@ -133,69 +133,33 @@ const generateOrderNumber = () => {
 };
 
 // ============================================
-// ORDER ENDPOINTS
+// ORDER ENDPOINTS - FIXED ROUTE ORDER
 // ============================================
 
-// Create new order
-app.post('/api/orders', verifyToken, async (req, res) => {
-    try {
-        const { 
-            items, 
-            shippingAddress, 
-            billingAddress, 
-            subtotal, 
-            tax, 
-            shippingFee,
-            discount,
-            paymentMethod 
-        } = req.body;
-        
-        const totalAmount = subtotal + tax + shippingFee - (discount || 0);
-        
-        const newOrder = new Order({
-            userId: req.userId,
-            orderNumber: generateOrderNumber(),
-            items,
-            shippingAddress,
-            billingAddress: billingAddress || shippingAddress,
-            subtotal,
-            tax,
-            shippingFee,
-            discount: discount || 0,
-            totalAmount,
-            paymentMethod,
-            statusHistory: [{
-                status: 'pending',
-                timestamp: Date.now(),
-                note: 'Order created'
-            }]
-        });
-        
-        await newOrder.save();
-        
-        res.status(201).json({
-            success: true,
-            message: 'Order created successfully',
-            data: newOrder
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
-    }
-});
+// IMPORTANT: Specific routes MUST come BEFORE parameterized routes
 
-// Get all orders for user
-app.get('/api/orders', verifyToken, async (req, res) => {
+// Get all orders (admin only) - MUST BE FIRST
+app.get('/api/orders/all', verifyToken, async (req, res) => {
     try {
-        const orders = await Order.find({ userId: req.userId }).sort({ createdAt: -1 });
+        if (req.userRole !== 'admin') {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied'
+            });
+        }
+        
+        const { status } = req.query;
+        let query = {};
+        if (status) query.status = status;
+        
+        const orders = await Order.find(query).sort({ createdAt: -1 });
         
         res.json({
             success: true,
             data: orders
         });
     } catch (error) {
+        console.error('Orders error:', error);
         res.status(500).json({
             success: false,
             message: error.message
@@ -253,68 +217,6 @@ app.get('/api/orders/filter', verifyToken, async (req, res) => {
         res.json({
             success: true,
             data: orders
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
-    }
-});
-
-// Get order by ID
-app.get('/api/orders/:id', verifyToken, async (req, res) => {
-    try {
-        const order = await Order.findById(req.params.id);
-        
-        if (!order) {
-            return res.status(404).json({
-                success: false,
-                message: 'Order not found'
-            });
-        }
-        
-        if (order.userId.toString() !== req.userId && req.userRole !== 'admin') {
-            return res.status(403).json({
-                success: false,
-                message: 'Access denied'
-            });
-        }
-        
-        res.json({
-            success: true,
-            data: order
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
-    }
-});
-
-// Get order by order number
-app.get('/api/orders/number/:orderNumber', verifyToken, async (req, res) => {
-    try {
-        const order = await Order.findOne({ orderNumber: req.params.orderNumber });
-        
-        if (!order) {
-            return res.status(404).json({
-                success: false,
-                message: 'Order not found'
-            });
-        }
-        
-        if (order.userId.toString() !== req.userId && req.userRole !== 'admin') {
-            return res.status(403).json({
-                success: false,
-                message: 'Access denied'
-            });
-        }
-        
-        res.json({
-            success: true,
-            data: order
         });
     } catch (error) {
         res.status(500).json({
@@ -398,6 +300,37 @@ app.get('/api/orders/:id/receipt', verifyToken, async (req, res) => {
         res.json({
             success: true,
             data: receipt
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+// Get order by order number
+app.get('/api/orders/number/:orderNumber', verifyToken, async (req, res) => {
+    try {
+        const order = await Order.findOne({ orderNumber: req.params.orderNumber });
+        
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: 'Order not found'
+            });
+        }
+        
+        if (order.userId.toString() !== req.userId && req.userRole !== 'admin') {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied'
+            });
+        }
+        
+        res.json({
+            success: true,
+            data: order
         });
     } catch (error) {
         res.status(500).json({
@@ -508,49 +441,6 @@ app.put('/api/orders/:id/status', verifyToken, async (req, res) => {
     }
 });
 
-// Bulk order status update (admin only)
-app.put('/api/admin/orders/bulk-status', verifyToken, async (req, res) => {
-    try {
-        if (req.userRole !== 'admin') {
-            return res.status(403).json({
-                success: false,
-                message: 'Access denied'
-            });
-        }
-        
-        const { orderIds, status, note } = req.body;
-        
-        const updates = await Promise.all(
-            orderIds.map(async (orderId) => {
-                const order = await Order.findById(orderId);
-                if (order) {
-                    order.status = status;
-                    order.updatedAt = Date.now();
-                    order.statusHistory.push({
-                        status: status,
-                        timestamp: Date.now(),
-                        note: note || `Bulk status update to ${status}`
-                    });
-                    await order.save();
-                    return order;
-                }
-                return null;
-            })
-        );
-        
-        res.json({
-            success: true,
-            message: `${updates.filter(o => o !== null).length} orders updated`,
-            data: updates.filter(o => o !== null)
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
-    }
-});
-
 // Cancel order
 app.put('/api/orders/:id/cancel', verifyToken, async (req, res) => {
     try {
@@ -600,36 +490,38 @@ app.put('/api/orders/:id/cancel', verifyToken, async (req, res) => {
     }
 });
 
-// Get all orders (admin only) - FIXED
-app.get('/api/orders/all', verifyToken, async (req, res) => {
+// Get order by ID - AFTER all specific routes
+app.get('/api/orders/:id', verifyToken, async (req, res) => {
     try {
-        if (req.userRole !== 'admin') {
+        const order = await Order.findById(req.params.id);
+        
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: 'Order not found'
+            });
+        }
+        
+        if (order.userId.toString() !== req.userId && req.userRole !== 'admin') {
             return res.status(403).json({
                 success: false,
                 message: 'Access denied'
             });
         }
         
-        const { status } = req.query;
-        let query = {};
-        if (status) query.status = status;
-        
-        // Don't use populate - users are in different DB
-        const orders = await Order.find(query).sort({ createdAt: -1 });
-        
         res.json({
             success: true,
-            data: orders
+            data: order
         });
     } catch (error) {
-        console.error('Orders error:', error);
         res.status(500).json({
             success: false,
             message: error.message
         });
     }
 });
-// Get user's orders - FIXED
+
+// Get all orders for user
 app.get('/api/orders', verifyToken, async (req, res) => {
     try {
         const { status } = req.query;
@@ -654,8 +546,58 @@ app.get('/api/orders', verifyToken, async (req, res) => {
     }
 });
 
-// Alternative: If populate fails, use this simpler version
-app.get('/api/orders/all-simple', verifyToken, async (req, res) => {
+// Create new order
+app.post('/api/orders', verifyToken, async (req, res) => {
+    try {
+        const { 
+            items, 
+            shippingAddress, 
+            billingAddress, 
+            subtotal, 
+            tax, 
+            shippingFee,
+            discount,
+            paymentMethod 
+        } = req.body;
+        
+        const totalAmount = subtotal + tax + shippingFee - (discount || 0);
+        
+        const newOrder = new Order({
+            userId: req.userId,
+            orderNumber: generateOrderNumber(),
+            items,
+            shippingAddress,
+            billingAddress: billingAddress || shippingAddress,
+            subtotal,
+            tax,
+            shippingFee,
+            discount: discount || 0,
+            totalAmount,
+            paymentMethod,
+            statusHistory: [{
+                status: 'pending',
+                timestamp: Date.now(),
+                note: 'Order created'
+            }]
+        });
+        
+        await newOrder.save();
+        
+        res.status(201).json({
+            success: true,
+            message: 'Order created successfully',
+            data: newOrder
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+// Bulk order status update (admin only)
+app.put('/api/admin/orders/bulk-status', verifyToken, async (req, res) => {
     try {
         if (req.userRole !== 'admin') {
             return res.status(403).json({
@@ -664,21 +606,32 @@ app.get('/api/orders/all-simple', verifyToken, async (req, res) => {
             });
         }
         
-        const { status } = req.query;
+        const { orderIds, status, note } = req.body;
         
-        let query = {};
-        if (status) {
-            query.status = status;
-        }
-        
-        const orders = await Order.find(query).sort({ createdAt: -1 });
+        const updates = await Promise.all(
+            orderIds.map(async (orderId) => {
+                const order = await Order.findById(orderId);
+                if (order) {
+                    order.status = status;
+                    order.updatedAt = Date.now();
+                    order.statusHistory.push({
+                        status: status,
+                        timestamp: Date.now(),
+                        note: note || `Bulk status update to ${status}`
+                    });
+                    await order.save();
+                    return order;
+                }
+                return null;
+            })
+        );
         
         res.json({
             success: true,
-            data: orders
+            message: `${updates.filter(o => o !== null).length} orders updated`,
+            data: updates.filter(o => o !== null)
         });
     } catch (error) {
-        console.error('Error fetching orders:', error);
         res.status(500).json({
             success: false,
             message: error.message
@@ -1027,8 +980,4 @@ app.post('/api/payments/webhook', async (req, res) => {
 const PORT = 3003;
 app.listen(PORT, () => {
     console.log('✓ Order & Payment Server is running!');
-    console.log('✓ http://localhost:' + PORT);
-
 });
-
-
