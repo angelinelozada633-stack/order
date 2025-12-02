@@ -1,4 +1,10 @@
 {
+  "name": "order-server",
+  "version": "1.0.0",
+  "main": "order-server.js",
+  "scripts": {
+    "start": "node order-server.js"
+  },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
